@@ -10,6 +10,7 @@ bin/
 gen/
 out/
 release/
+node_modules/
 
 # Gradle
 .gradle/
@@ -92,6 +93,7 @@ fastlane/readme.md
 *.bak
 *.swp
 *~
+.next-version
 .cache/
 tmp/
 temp/
