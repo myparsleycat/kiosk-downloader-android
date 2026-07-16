@@ -47,11 +47,11 @@ class AppSettingsRepository @Inject constructor(@ApplicationContext context: Con
     )
 
     fun setStreamWriteBatchBytes(value: Int) = update(
-        settings.value.copy(streamWriteBatchBytes = STREAM_WRITE_OPTIONS.minBy { kotlin.math.abs(it - value) }),
+        settings.value.copy(streamWriteBatchBytes = closestOption(STREAM_WRITE_OPTIONS, value)),
     )
 
     fun setInflateBufferBytes(value: Int) = update(
-        settings.value.copy(inflateBufferBytes = INFLATE_BUFFER_OPTIONS.minBy { kotlin.math.abs(it - value) }),
+        settings.value.copy(inflateBufferBytes = closestOption(INFLATE_BUFFER_OPTIONS, value)),
     )
 
     fun setThemeMode(value: ThemeMode) = update(settings.value.copy(themeMode = value))
@@ -92,10 +92,14 @@ class AppSettingsRepository @Inject constructor(@ApplicationContext context: Con
         asciiFilenames = preferences.getBoolean("asciiFilenames", false),
         autoTryCollectionPasswords = preferences.getBoolean("autoTryCollectionPasswords", false),
         collectionPasswordList = readCollectionPasswords(),
-        streamWriteBatchBytes = preferences.getInt("streamWriteBatchBytes", 2 * 1024 * 1024)
-            .let { value -> STREAM_WRITE_OPTIONS.minBy { kotlin.math.abs(it - value) } },
-        inflateBufferBytes = preferences.getInt("inflateBufferBytes", 8 * 1024 * 1024)
-            .let { value -> INFLATE_BUFFER_OPTIONS.minBy { kotlin.math.abs(it - value) } },
+        streamWriteBatchBytes = closestOption(
+            STREAM_WRITE_OPTIONS,
+            preferences.getInt("streamWriteBatchBytes", 2 * 1024 * 1024),
+        ),
+        inflateBufferBytes = closestOption(
+            INFLATE_BUFFER_OPTIONS,
+            preferences.getInt("inflateBufferBytes", 8 * 1024 * 1024),
+        ),
         themeMode = runCatching {
             ThemeMode.valueOf(preferences.getString("themeMode", null) ?: ThemeMode.SYSTEM.name)
         }.getOrDefault(ThemeMode.SYSTEM),
@@ -132,5 +136,8 @@ class AppSettingsRepository @Inject constructor(@ApplicationContext context: Con
             1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024,
             8 * 1024 * 1024, 16 * 1024 * 1024,
         )
+
+        fun closestOption(options: IntArray, value: Int): Int =
+            options.minByOrNull { kotlin.math.abs(it - value) } ?: options.first()
     }
 }

@@ -49,15 +49,17 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): KioskDatabase =
         Room.databaseBuilder(context, KioskDatabase::class.java, "kiosk-downloader.db")
-            .addMigrations(KioskDatabase.MIGRATION_1_2)
-            .addMigrations(KioskDatabase.MIGRATION_2_3)
-            .addMigrations(KioskDatabase.MIGRATION_3_4)
-            .addMigrations(KioskDatabase.MIGRATION_4_5)
-            .addMigrations(KioskDatabase.MIGRATION_5_6)
-            .addMigrations(KioskDatabase.MIGRATION_6_7)
-            .addMigrations(KioskDatabase.MIGRATION_7_8)
-            .addMigrations(KioskDatabase.MIGRATION_8_9)
-            .addMigrations(KioskDatabase.MIGRATION_9_10)
+            .addMigrations(
+                KioskDatabase.MIGRATION_1_2,
+                KioskDatabase.MIGRATION_2_3,
+                KioskDatabase.MIGRATION_3_4,
+                KioskDatabase.MIGRATION_4_5,
+                KioskDatabase.MIGRATION_5_6,
+                KioskDatabase.MIGRATION_6_7,
+                KioskDatabase.MIGRATION_7_8,
+                KioskDatabase.MIGRATION_8_9,
+                KioskDatabase.MIGRATION_9_10,
+            )
             .build()
 
     @Provides

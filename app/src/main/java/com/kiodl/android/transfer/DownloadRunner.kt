@@ -391,22 +391,19 @@ class DownloadRunner @Inject constructor(
         val reader = KioSegmentedReader(
             meta.archiveSize, collection.segmentSize, segments, activeKioClient,
         ) { block -> segmentPools.withDownloadPermit(segmentPoolSize, block) }
-        val localHeader = withNetworkRetries(settingsRepository.settings.value.downloadMaxRetries) {
-            reader.read(meta.offset, 30)
-        }
-        val header = ByteBuffer.wrap(localHeader).order(ByteOrder.LITTLE_ENDIAN)
-        require(header.int == 0x04034b50) { "잘못된 ZIP local header입니다." }
-        header.position(26)
-        val nameLength = header.short.toInt() and 0xffff
-        val extraLength = header.short.toInt() and 0xffff
-        val dataOffset = meta.offset + 30 + nameLength + extraLength
+        val zipHeader = parseZipLocalHeader(
+            withNetworkRetries(settingsRepository.settings.value.downloadMaxRetries) {
+                reader.read(meta.offset, 30)
+            },
+        )
+        val dataOffset = zipHeader.dataOffset(meta.offset)
         val stored = downloadDao.listChunks(file.id).firstOrNull()
         val downloaded = stored?.downloadedBytes
             ?.takeIf { it in 1..meta.compressedSize && compressedFile.length() >= it }
             ?: 0L
         downloadDao.updateFileState(file.id, "DOWNLOADING", file.downloadedBytes, System.currentTimeMillis())
         compressedFile.parentFile?.mkdirs()
-        java.io.RandomAccessFile(compressedFile, "rw").use { output ->
+        RandomAccessFile(compressedFile, "rw").use { output ->
             output.setLength(downloaded)
             output.seek(downloaded)
             var transferred = downloaded
@@ -507,24 +504,20 @@ class DownloadRunner @Inject constructor(
         val reader = KioSegmentedReader(
             meta.archiveSize, collection.segmentSize, segments, activeKioClient,
         ) { block -> segmentPools.withDownloadPermit(segmentPoolSize, block) }
-        val localHeader = withNetworkRetries(settingsRepository.settings.value.downloadMaxRetries) {
-            reader.read(meta.offset, 30)
-        }
-        val headerBuffer = ByteBuffer.wrap(localHeader).order(ByteOrder.LITTLE_ENDIAN)
-        require(headerBuffer.int == 0x04034b50) { "잘못된 ZIP local header입니다." }
-        headerBuffer.position(26)
-        val nameLength = headerBuffer.short.toInt() and 0xffff
-        val extraLength = headerBuffer.short.toInt() and 0xffff
-        val localHeaderSize = 30L + nameLength + extraLength
+        val zipHeader = parseZipLocalHeader(
+            withNetworkRetries(settingsRepository.settings.value.downloadMaxRetries) {
+                reader.read(meta.offset, 30)
+            },
+        )
         val entryRangeSize = minOf(
-            localHeaderSize + meta.compressedSize + 24L,
+            zipHeader.localHeaderSize + meta.compressedSize + 24L,
             meta.archiveSize - meta.offset,
         )
         val stored = downloadDao.listChunks(file.id).firstOrNull()
         var downloaded = stored?.downloadedBytes
             ?.takeIf { it in 1..entryRangeSize && entryFile.length() >= it }
             ?: 0L
-        java.io.RandomAccessFile(entryFile, "rw").use { output ->
+        RandomAccessFile(entryFile, "rw").use { output ->
             output.setLength(downloaded)
             output.seek(downloaded)
             var bytesSinceForce = 0
@@ -741,6 +734,15 @@ class DownloadRunner @Inject constructor(
         onProgress(collection, downloadDao.getDownload(collection.id)?.transferredBytes ?: 0L)
     }
 
+    private fun parseZipLocalHeader(localHeader: ByteArray): ZipLocalHeader {
+        val header = ByteBuffer.wrap(localHeader).order(ByteOrder.LITTLE_ENDIAN)
+        require(header.int == 0x04034b50) { "잘못된 ZIP local header입니다." }
+        header.position(26)
+        val nameLength = header.short.toInt() and 0xffff
+        val extraLength = header.short.toInt() and 0xffff
+        return ZipLocalHeader(localHeaderSize = 30L + nameLength + extraLength)
+    }
+
     private suspend fun <T> withNetworkRetries(
         maxRetries: Int,
         linearBackoff: Boolean = false,
@@ -793,6 +795,10 @@ private const val SLOW_RECONNECT_JITTER_MS = 250L
 
 private fun DownloadEntity.destinationPath(path: String): String =
     listOf(destinationSubfolder, path).filter(String::isNotBlank).joinToString("/")
+
+private data class ZipLocalHeader(val localHeaderSize: Long) {
+    fun dataOffset(archiveOffset: Long): Long = archiveOffset + localHeaderSize
+}
 
 private data class ZipDownloadMeta(
     val path: String,

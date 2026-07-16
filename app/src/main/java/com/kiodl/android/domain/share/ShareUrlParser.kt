@@ -15,23 +15,8 @@ object ShareUrlParser {
     private const val TRANSFER_ID_LENGTH = 12
     private val validId = Regex("^[A-Za-z0-9_-]+$")
 
-    fun parse(value: String): ParsedDownloadUrl? {
-        val uri = runCatching { URI(resolve(value) ?: value.trim()) }.getOrNull() ?: return null
-        val host = uri.host?.removePrefix("www.") ?: return null
-        val path = uri.path ?: return null
-
-        return when (host) {
-            KIOSK_HOST -> extract(path, KIOSK_PREFIX, KIOSK_ID_LENGTH)?.let {
-                ParsedDownloadUrl(DownloadProvider.KIOSK, it)
-            }
-
-            TRANSFER_HOST -> extract(path, TRANSFER_PREFIX, TRANSFER_ID_LENGTH)?.let {
-                ParsedDownloadUrl(DownloadProvider.TRANSFER, it)
-            }
-
-            else -> null
-        }
-    }
+    fun parse(value: String): ParsedDownloadUrl? =
+        parseDirect(resolve(value) ?: value.trim())
 
     fun resolve(value: String): String? {
         var current = value.trim()

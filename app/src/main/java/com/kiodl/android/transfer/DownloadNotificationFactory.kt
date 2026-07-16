@@ -25,25 +25,15 @@ class DownloadNotificationFactory @Inject constructor(
         cancelIntent: PendingIntent? = null,
     ): Notification {
         createChannel()
-        val max = collection.totalBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val progress = if (collection.totalBytes <= 0) {
-            0
-        } else {
-            (transferredBytes.toDouble() / collection.totalBytes * max).toInt().coerceIn(0, max)
-        }
-        val percent = if (collection.totalBytes > 0) {
-            (transferredBytes.toDouble() / collection.totalBytes * 100).toInt().coerceIn(0, 100)
-        } else {
-            null
-        }
+        val parts = progressParts(collection.totalBytes, transferredBytes)
         val speedBps = sampleSpeed(collection.id, transferredBytes, System.currentTimeMillis())
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(collection.name)
-            .setContentText(buildProgressText("다운로드 중", percent, speedBps))
+            .setContentText(buildProgressText("다운로드 중", parts.percent, speedBps))
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .setProgress(max, progress, collection.totalBytes <= 0)
+            .setProgress(parts.max, parts.progress, collection.totalBytes <= 0)
             .apply {
                 if (cancelIntent != null) addAction(0, "취소", cancelIntent)
             }
@@ -64,22 +54,15 @@ class DownloadNotificationFactory @Inject constructor(
 
     fun createUpload(name: String, transferredBytes: Long, totalBytes: Long, uploadId: String): Notification {
         createChannel()
-        val max = totalBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val progress = if (totalBytes <= 0) 0
-        else (transferredBytes.toDouble() / totalBytes * max).toInt().coerceIn(0, max)
-        val percent = if (totalBytes > 0) {
-            (transferredBytes.toDouble() / totalBytes * 100).toInt().coerceIn(0, 100)
-        } else {
-            null
-        }
+        val parts = progressParts(totalBytes, transferredBytes)
         val speedBps = sampleSpeed("upload:$uploadId", transferredBytes, System.currentTimeMillis())
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(name)
-            .setContentText(buildProgressText("업로드 중", percent, speedBps))
+            .setContentText(buildProgressText("업로드 중", parts.percent, speedBps))
             .setOnlyAlertOnce(true)
             .setOngoing(true)
-            .setProgress(max, progress, totalBytes <= 0)
+            .setProgress(parts.max, parts.progress, totalBytes <= 0)
             .build()
     }
 
@@ -122,6 +105,21 @@ class DownloadNotificationFactory @Inject constructor(
         return speedBps
     }
 
+    private fun progressParts(totalBytes: Long, transferredBytes: Long): ProgressParts {
+        val max = totalBytes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val progress = if (totalBytes <= 0) {
+            0
+        } else {
+            (transferredBytes.toDouble() / totalBytes * max).toInt().coerceIn(0, max)
+        }
+        val percent = if (totalBytes > 0) {
+            (transferredBytes.toDouble() / totalBytes * 100).toInt().coerceIn(0, 100)
+        } else {
+            null
+        }
+        return ProgressParts(max = max, progress = progress, percent = percent)
+    }
+
     private fun buildProgressText(label: String, percent: Int?, speedBps: Long): String =
         buildList {
             add(label)
@@ -140,6 +138,8 @@ class DownloadNotificationFactory @Inject constructor(
         }
         return "%.1f %s".format(value, units[unitIndex])
     }
+
+    private data class ProgressParts(val max: Int, val progress: Int, val percent: Int?)
 
     private data class SpeedSample(
         var lastBytes: Long = 0L,

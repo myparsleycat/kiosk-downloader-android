@@ -95,88 +95,70 @@ class UploadRunner @Inject constructor(
                                 ?: throw IOException("업로드 청크의 원본 파일을 찾을 수 없습니다.")
                             coroutineContext.ensureActive()
                             val bytes = readRange(file, chunk.offset, chunk.size.toInt())
-                            var failure: IOException? = null
-                            var attempt = 0
-                            var slowReconnects = 0
-                            var countAttempt = true
-                            while (attempt <= settings.uploadMaxRetries) {
-                                try {
+                            withUploadRetries(
+                                maxRetries = settings.uploadMaxRetries,
+                                onSlowReconnect = {
                                     dao.setChunkStatus(
-                                        file.id, chunk.chunkIndex, "UPLOADING", 0,
-                                        if (countAttempt) 1 else 0,
+                                        file.id, chunk.chunkIndex, "QUEUED", 0, 0,
                                         System.currentTimeMillis(), null,
                                     )
-                                    countAttempt = false
-                                    activeClient.requestSegment(
-                                        file.remoteId, chunk.chunkIndex, bytes, upload.uploadToken,
-                                    )?.let { target ->
-                                        val liveUploaded = AtomicLong()
-                                        coroutineScope {
-                                            val uploadJob = async {
-                                                activeClient.uploadEdge(
-                                                    target,
-                                                    bytes,
-                                                    consumeBandwidth = { count ->
-                                                        bandwidth.consumeUpload(
-                                                            count,
-                                                            settingsRepository.settings.value.uploadBandwidthMiBps,
-                                                        )
-                                                    },
-                                                    onUploaded = { count -> liveUploaded.addAndGet(count.toLong()) },
-                                                )
-                                            }
-                                            val progressJob = launch {
-                                                while (uploadJob.isActive) {
-                                                    delay(PROGRESS_EMIT_INTERVAL_MS)
-                                                    val transferred = liveUploaded.get().coerceAtMost(chunk.size)
-                                                    dao.setChunkStatus(
-                                                        file.id, chunk.chunkIndex, "UPLOADING", transferred, 0,
-                                                        System.currentTimeMillis(), null,
-                                                    )
-                                                    dao.syncFileProgressFromChunks(file.id)
-                                                    dao.refreshProgress(id, System.currentTimeMillis())
-                                                    onProgress(dao.upload(id)?.uploadedBytes ?: 0L, upload.totalBytes)
-                                                }
-                                            }
-                                            try {
-                                                uploadJob.await()
-                                            } finally {
-                                                progressJob.cancelAndJoin()
-                                            }
-                                        }
-                                    }
-                                    failure = null
-                                    break
-                                } catch (error: IOException) {
-                                    failure = error
-                                    if (error is SocketTimeoutException && slowReconnects < MAX_SLOW_RECONNECTS) {
-                                        slowReconnects += 1
-                                        dao.setChunkStatus(
-                                            file.id, chunk.chunkIndex, "QUEUED", 0, 0,
-                                            System.currentTimeMillis(), null,
-                                        )
-                                        delay(SLOW_RECONNECT_DELAY_MS + Random.nextLong(SLOW_RECONNECT_JITTER_MS + 1))
-                                        continue
-                                    }
+                                },
+                                onFailure = { attempt, error, willRetry ->
                                     dao.setChunkStatus(
                                         file.id,
                                         chunk.chunkIndex,
-                                        if (attempt < settings.uploadMaxRetries) "QUEUED" else "ERROR",
+                                        if (willRetry) "QUEUED" else "ERROR",
                                         0,
                                         0,
                                         System.currentTimeMillis(),
                                         error.message,
                                     )
-                                    if (attempt < settings.uploadMaxRetries) {
-                                        delay((1_000L shl attempt).coerceAtMost(30_000L))
-                                        attempt += 1
-                                        countAttempt = true
-                                        continue
+                                },
+                            ) { countAttempt ->
+                                dao.setChunkStatus(
+                                    file.id, chunk.chunkIndex, "UPLOADING", 0,
+                                    if (countAttempt) 1 else 0,
+                                    System.currentTimeMillis(), null,
+                                )
+                                activeClient.requestSegment(
+                                    file.remoteId, chunk.chunkIndex, bytes, upload.uploadToken,
+                                )?.let { target ->
+                                    val liveUploaded = AtomicLong()
+                                    coroutineScope {
+                                        val uploadJob = async {
+                                            activeClient.uploadEdge(
+                                                target,
+                                                bytes,
+                                                consumeBandwidth = { count ->
+                                                    bandwidth.consumeUpload(
+                                                        count,
+                                                        settingsRepository.settings.value.uploadBandwidthMiBps,
+                                                    )
+                                                },
+                                                onUploaded = { count -> liveUploaded.addAndGet(count.toLong()) },
+                                            )
+                                        }
+                                        val progressJob = launch {
+                                            while (uploadJob.isActive) {
+                                                delay(PROGRESS_EMIT_INTERVAL_MS)
+                                                val transferred = liveUploaded.get().coerceAtMost(chunk.size)
+                                                dao.setChunkStatus(
+                                                    file.id, chunk.chunkIndex, "UPLOADING", transferred, 0,
+                                                    System.currentTimeMillis(), null,
+                                                )
+                                                dao.syncFileProgressFromChunks(file.id)
+                                                dao.refreshProgress(id, System.currentTimeMillis())
+                                                onProgress(dao.upload(id)?.uploadedBytes ?: 0L, upload.totalBytes)
+                                            }
+                                        }
+                                        try {
+                                            uploadJob.await()
+                                        } finally {
+                                            progressJob.cancelAndJoin()
+                                        }
                                     }
-                                    break
                                 }
                             }
-                            failure?.let { throw it }
                             dao.setChunkStatus(
                                 file.id, chunk.chunkIndex, "COMPLETED", chunk.size, 0,
                                 System.currentTimeMillis(), null,
@@ -221,6 +203,38 @@ class UploadRunner @Inject constructor(
             dao.resetRunningFiles(id)
             dao.setStatus(id, "ERROR", error.message ?: "업로드에 실패했습니다.", System.currentTimeMillis())
             throw error
+        }
+    }
+
+    private suspend fun withUploadRetries(
+        maxRetries: Int,
+        onSlowReconnect: suspend () -> Unit,
+        onFailure: suspend (attempt: Int, error: IOException, willRetry: Boolean) -> Unit,
+        block: suspend (countAttempt: Boolean) -> Unit,
+    ) {
+        var attempt = 0
+        var slowReconnects = 0
+        var countAttempt = true
+        while (true) {
+            try {
+                block(countAttempt)
+                return
+            } catch (error: IOException) {
+                // After the first counted attempt, slow-reconnect retries must not bump attempts.
+                countAttempt = false
+                if (error is SocketTimeoutException && slowReconnects < MAX_SLOW_RECONNECTS) {
+                    slowReconnects += 1
+                    onSlowReconnect()
+                    delay(SLOW_RECONNECT_DELAY_MS + Random.nextLong(SLOW_RECONNECT_JITTER_MS + 1))
+                    continue
+                }
+                val willRetry = attempt < maxRetries
+                onFailure(attempt, error, willRetry)
+                if (!willRetry) throw error
+                delay((1_000L shl attempt).coerceAtMost(30_000L))
+                attempt += 1
+                countAttempt = true
+            }
         }
     }
 

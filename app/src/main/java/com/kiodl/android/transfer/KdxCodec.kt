@@ -147,8 +147,7 @@ data class KdxNode(
 ) {
     fun requireValid(expectedType: String = type) {
         require(type == expectedType && id.isNotEmpty())
-        if (type == "file") require(size != null && size >= 0)
-        if (type == "zip") require(size != null && size >= 0)
+        if (type == "file" || type == "zip") require(size != null && size >= 0)
         if (type == "dir") requireNotNull(entries)
         entries?.forEach { it.node.requireValid(it.kind) }
         zipEntry?.requireValid()

@@ -195,11 +195,7 @@ private fun DownloadCard(
                         )
                     }
                     when {
-                        file.status in setOf(
-                            FileDownloadStatus.DOWNLOADING,
-                            FileDownloadStatus.INFLATING,
-                            FileDownloadStatus.PENDING,
-                        ) -> OutlinedButton(
+                        file.status in ACTIVE_FILE_STATUSES -> OutlinedButton(
                             onClick = { onPauseFile(item.id, file.id) },
                         ) { Text("정지") }
                         file.status == FileDownloadStatus.PAUSED || file.status == FileDownloadStatus.ERROR ->
@@ -239,3 +235,9 @@ private fun DownloadCard(
         }
     }
 }
+
+private val ACTIVE_FILE_STATUSES = setOf(
+    FileDownloadStatus.DOWNLOADING,
+    FileDownloadStatus.INFLATING,
+    FileDownloadStatus.PENDING,
+)

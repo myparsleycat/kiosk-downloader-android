@@ -80,15 +80,17 @@ internal fun NewDownloadPage(
     var password by rememberSaveable { mutableStateOf("") }
     var destinationUri by rememberSaveable { mutableStateOf(lastDestinationUri) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    val loadedFiles = (collectionState as? CollectionLoadState.Loaded)
-        ?.value?.collection?.tree?.flattenFilePaths().orEmpty()
-    var selectedPaths by remember((collectionState as? CollectionLoadState.Loaded)?.value?.collection?.shareId) {
+    val loaded = collectionState as? CollectionLoadState.Loaded
+    val loadedCollection = loaded?.value?.collection
+    val loadedFiles = loadedCollection?.tree?.flattenFilePaths().orEmpty()
+    val loadedShareId = loadedCollection?.shareId
+    var selectedPaths by remember(loadedShareId) {
         mutableStateOf<Set<String>>(loadedFiles.map { it.path }.toSet())
     }
-    var zipPasswords by remember((collectionState as? CollectionLoadState.Loaded)?.value?.collection?.shareId) {
+    var zipPasswords by remember(loadedShareId) {
         mutableStateOf<Map<String, String>>(emptyMap())
     }
-    var renames by remember((collectionState as? CollectionLoadState.Loaded)?.value?.collection?.shareId) {
+    var renames by remember(loadedShareId) {
         mutableStateOf<Map<String, String>>(emptyMap())
     }
     LaunchedEffect(incomingUrl) {

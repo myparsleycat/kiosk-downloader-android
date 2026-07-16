@@ -124,14 +124,14 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadZipEntries(fileId: String) {
-        val state = collectionState.value as? CollectionLoadState.Loaded ?: return
+        val loaded = (collectionState.value as? CollectionLoadState.Loaded)?.value ?: return
         viewModelScope.launch {
-            runCatching { collectionSourceRepository.listZipEntries(state.value, fileId) }
+            runCatching { collectionSourceRepository.listZipEntries(loaded, fileId) }
                 .onSuccess { entries ->
                     mutableCollectionState.value = CollectionLoadState.Loaded(
-                        state.value.copy(
-                            collection = state.value.collection.copy(
-                                tree = state.value.collection.tree.replaceZipEntries(fileId, entries),
+                        loaded.copy(
+                            collection = loaded.collection.copy(
+                                tree = loaded.collection.tree.replaceZipEntries(fileId, entries),
                             ),
                         ),
                     )
