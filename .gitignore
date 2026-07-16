@@ -1,0 +1,97 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle
+.gradle/
+build/
+**/build/
+.gradle-kotlin-dsl/
+
+# Local configuration
+local.properties
+*.local
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+*.ipr
+*.iws
+.navigation/
+captures/
+output.json
+
+# NDK / CMake
+.externalNativeBuild/
+.cxx/
+obj/
+
+# Kotlin
+.kotlin/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Logs & dumps
+*.log
+*.hprof
+hs_err_pid*
+
+# Signing / secrets (never commit)
+*.jks
+*.keystore
+*.pem
+*.p12
+secrets.properties
+keystore.properties
+*.key
+
+# Lint / test / coverage
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+lint/reports/
+reports/
+test-results/
+*.exec
+jacoco.exec
+coverage/
+.coverage
+
+# Profiling
+*.trace
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/readme.md
+
+# Google Services (uncomment if secrets live here)
+# google-services.json
+
+# Misc
+*.bak
+*.swp
+*~
+.cache/
+tmp/
+temp/
